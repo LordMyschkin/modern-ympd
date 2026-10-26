@@ -42,6 +42,8 @@
     X(MPD_API_GET_QUEUE)        \
     X(MPD_API_GET_BROWSE)       \
     X(MPD_API_GET_MPDHOST)      \
+    X(MPD_API_GET_AUTOFILL)     \
+    X(MPD_API_SET_AUTOFILL)     \
     X(MPD_API_ADD_TRACK)        \
     X(MPD_API_ADD_PLAY_TRACK)   \
     X(MPD_API_ADD_PLAYLIST)     \
@@ -100,6 +102,9 @@ struct t_mpd {
 
     int song_id;
     unsigned queue_version;
+    unsigned autofill_target;
+    int autofill_enabled;
+    unsigned autofill_revision;
 };
 
 extern struct t_mpd mpd;
@@ -114,7 +119,8 @@ struct t_mpd_client_session {
 void mpd_poll(struct mg_server *s);
 int callback_mpd(struct mg_connection *c);
 int mpd_close_handler(struct mg_connection *c);
-int mpd_put_state(char *buffer, int *current_song_id, unsigned *queue_version);
+int mpd_put_state(char *buffer, int *current_song_id, unsigned *queue_version,
+                  unsigned *queue_length);
 int mpd_put_outputs(char *buffer, int putnames);
 int mpd_put_channels(char *buffer);
 int mpd_put_current_song(char *buffer);
@@ -122,4 +128,6 @@ int mpd_put_queue(char *buffer, unsigned int offset);
 int mpd_put_browse(char *buffer, char *path, unsigned int offset);
 int mpd_search(char *buffer, char *searchstr);
 void mpd_disconnect();
+void mpd_load_settings(void);
+int mpd_save_settings(void);
 #endif

@@ -93,6 +93,9 @@ int main(int argc, char **argv) {
     mpd.local_port = 0;
     mpd.gpass = NULL;
     strcpy(mpd.host, "127.0.0.1");
+    mpd.autofill_target = 20;
+    mpd_load_settings();
+    srand((unsigned)(time(NULL) ^ getpid()));
 
     /* clang-format off */
     static struct option long_options[] = {

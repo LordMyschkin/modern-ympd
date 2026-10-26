@@ -760,6 +760,11 @@ function webSocketConnect() {
                 case 'state':
                     updatePlayIcon(obj.data.state);
                     updateVolumeIcon(obj.data.volume);
+                    if (obj.data.bitrate && obj.data.state !== 1)
+                        $('#bitrate')
+                            .text(obj.data.bitrate + ' kbit/s')
+                            .removeClass('hide');
+                    else $('#bitrate').text('').addClass('hide');
 
                     if (JSON.stringify(obj) === JSON.stringify(last_state))
                         break;
@@ -887,6 +892,7 @@ function webSocketConnect() {
                     updatePageTitle(obj.data);
                     $('#album').text('');
                     $('#artist').text('');
+                    $('#composer').text('').addClass('hide');
 
                     $('#btnlove').removeClass('active');
 
@@ -901,6 +907,11 @@ function webSocketConnect() {
                     if (obj.data.album) {
                         $('#album').text(obj.data.album);
                         notification += obj.data.album + '<br />';
+                    }
+                    if (obj.data.composer) {
+                        $('#composer')
+                            .text('Composed by ' + obj.data.composer)
+                            .removeClass('hide');
                     }
 
                     if ($.cookie('notification') === 'true')
@@ -923,6 +934,10 @@ function webSocketConnect() {
                     $('#mpdport').val(obj.data.port);
                     if (obj.data.passwort_set)
                         $('#mpd_password_set').removeClass('hide');
+                    break;
+                case 'autofill':
+                    $('#fill-playlist-enabled').prop('checked', !!obj.data.enabled);
+                    $('#fill-playlist-count').val(obj.data.target);
                     break;
 
                 case 'authorized':
@@ -1226,6 +1241,7 @@ $('#btnautoplay').on('click', function (e) {
 
 function getHost() {
     socket.send('MPD_API_GET_MPDHOST');
+    socket.send('MPD_API_GET_AUTOFILL');
 
     function onEnter(event) {
         if (event.which == 13) {
@@ -1287,6 +1303,16 @@ function saveQueue() {
 }
 
 function confirmSettings() {
+    var fillCount = Number($('#fill-playlist-count').val());
+    if (
+        !isFinite(fillCount) ||
+        Math.floor(fillCount) !== fillCount ||
+        fillCount < 1 ||
+        fillCount > 500
+    ) {
+        $('#fill-playlist-count').focus();
+        return;
+    }
     if ($('#mpd_pw').val().length + $('#mpd_pw_con').val().length > 0) {
         if ($('#mpd_pw').val() !== $('#mpd_pw_con').val()) {
             $('#mpd_pw_con').popover('show');
@@ -1296,6 +1322,12 @@ function confirmSettings() {
             return;
         } else socket.send('MPD_API_SET_MPDPASS,' + $('#mpd_pw').val());
     }
+    socket.send(
+        'MPD_API_SET_AUTOFILL,' +
+            ($('#fill-playlist-enabled').prop('checked') ? 1 : 0) +
+            ',' +
+            fillCount
+    );
     socket.send(
         'MPD_API_SET_MPDHOST,' + $('#mpdport').val() + ',' + $('#mpdhost').val()
     );

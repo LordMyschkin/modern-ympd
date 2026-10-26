@@ -18,12 +18,15 @@
 
 #include "mpd_client.h"
 
+#include <errno.h>
 #include <libgen.h>
 #include <mpd/client.h>
 #include <mpd/message.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "config.h"
@@ -34,6 +37,199 @@ static int mpd_notify_callback(struct mg_connection *c, enum mg_event ev);
 struct t_mpd mpd;
 
 const char *mpd_cmd_strs[] = {MPD_CMDS(GEN_STR)};
+
+static int mpd_settings_path(char *path, size_t size, int create_dirs) {
+    const char *override = getenv("YMPD_SETTINGS_FILE");
+    const char *config = getenv("XDG_CONFIG_HOME");
+    const char *home = getenv("HOME");
+    char directory[1024];
+    int n;
+
+    if (override && *override) {
+        n = snprintf(path, size, "%s", override);
+        return n >= 0 && n < size;
+    }
+    if (!config || !*config) {
+        if (!home || !*home)
+            return 0;
+        n = snprintf(directory, sizeof(directory), "%s/.config", home);
+        if (n < 0 || n >= sizeof(directory))
+            return 0;
+        if (create_dirs && mkdir(directory, 0700) && errno != EEXIST)
+            return 0;
+        config = directory;
+    }
+    n = snprintf(path, size, "%s/ympd", config);
+    if (n < 0 || n >= size)
+        return 0;
+    if (create_dirs && mkdir(path, 0700) && errno != EEXIST)
+        return 0;
+    n = snprintf(path, size, "%s/ympd/settings", config);
+    return n >= 0 && n < size;
+}
+
+void mpd_load_settings(void) {
+    char path[1024];
+    unsigned enabled, target;
+    FILE *file;
+
+    if (!mpd_settings_path(path, sizeof(path), 0))
+        return;
+    file = fopen(path, "r");
+    if (!file)
+        return;
+    if (fscanf(file, "%u %u", &enabled, &target) == 2 && enabled <= 1 && target >= 1 &&
+        target <= 500) {
+        mpd.autofill_enabled = enabled;
+        mpd.autofill_target = target;
+    }
+    fclose(file);
+}
+
+int mpd_save_settings(void) {
+    char path[1024], temporary[1040];
+    FILE *file;
+    int fd, n, written, closed;
+
+    if (!mpd_settings_path(path, sizeof(path), 1))
+        return 0;
+    n = snprintf(temporary, sizeof(temporary), "%s.XXXXXX", path);
+    if (n < 0 || n >= sizeof(temporary))
+        return 0;
+    fd = mkstemp(temporary);
+    if (fd < 0)
+        return 0;
+    file = fdopen(fd, "w");
+    if (!file) {
+        close(fd);
+        unlink(temporary);
+        return 0;
+    }
+    written = fprintf(file, "%d %u\n", mpd.autofill_enabled, mpd.autofill_target);
+    closed = fclose(file);
+    if (written < 0 || closed != 0) {
+        unlink(temporary);
+        return 0;
+    }
+    if (rename(temporary, path) != 0) {
+        unlink(temporary);
+        return 0;
+    }
+    return 1;
+}
+
+static int compare_uris(const void *a, const void *b) {
+    return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+static void free_uris(char **uris, size_t count) {
+    if (!uris)
+        return;
+    for (size_t i = 0; i < count; i++)
+        free(uris[i]);
+    free(uris);
+}
+
+static int mpd_fill_playlist(unsigned queue_length) {
+    struct mpd_entity *entity;
+    char **queued = NULL, **selected = NULL;
+    char *fallback = NULL;
+    size_t queued_count = 0, queued_capacity = queue_length + 1;
+    size_t selected_count = 0, available = 0, all_songs = 0;
+    unsigned missing = mpd.autofill_target - queue_length;
+    int added = 0;
+
+    queued = calloc(queued_capacity, sizeof(*queued));
+    selected = calloc(missing, sizeof(*selected));
+    if (!queued || !selected)
+        goto done;
+
+    if (!mpd_send_list_queue_meta(mpd.conn))
+        goto error;
+    while ((entity = mpd_recv_entity(mpd.conn)) != NULL) {
+        if (mpd_entity_get_type(entity) == MPD_ENTITY_TYPE_SONG) {
+            const char *uri = mpd_song_get_uri(mpd_entity_get_song(entity));
+            if (queued_count == queued_capacity) {
+                size_t new_capacity = queued_capacity * 2;
+                char **more = realloc(queued, new_capacity * sizeof(*queued));
+                if (!more) {
+                    mpd_entity_free(entity);
+                    mpd_response_finish(mpd.conn);
+                    goto done;
+                }
+                queued = more;
+                queued_capacity = new_capacity;
+            }
+            queued[queued_count] = strdup(uri);
+            if (!queued[queued_count]) {
+                mpd_entity_free(entity);
+                mpd_response_finish(mpd.conn);
+                goto done;
+            }
+            queued_count++;
+        }
+        mpd_entity_free(entity);
+    }
+    if (!mpd_response_finish(mpd.conn))
+        goto error;
+    qsort(queued, queued_count, sizeof(*queued), compare_uris);
+
+    if (!mpd_send_list_all(mpd.conn, NULL))
+        goto error;
+    while ((entity = mpd_recv_entity(mpd.conn)) != NULL) {
+        if (mpd_entity_get_type(entity) == MPD_ENTITY_TYPE_SONG) {
+            const char *uri = mpd_song_get_uri(mpd_entity_get_song(entity));
+            all_songs++;
+            if (rand() % all_songs == 0) {
+                free(fallback);
+                fallback = strdup(uri);
+            }
+            if (!bsearch(&uri, queued, queued_count, sizeof(*queued), compare_uris)) {
+                available++;
+                if (selected_count < missing) {
+                    selected[selected_count] = strdup(uri);
+                    if (!selected[selected_count]) {
+                        mpd_entity_free(entity);
+                        mpd_response_finish(mpd.conn);
+                        goto done;
+                    }
+                    selected_count++;
+                } else {
+                    size_t slot = rand() % available;
+                    if (slot < missing) {
+                        char *replacement = strdup(uri);
+                        if (replacement) {
+                            free(selected[slot]);
+                            selected[slot] = replacement;
+                        }
+                    }
+                }
+            }
+        }
+        mpd_entity_free(entity);
+    }
+    if (!mpd_response_finish(mpd.conn))
+        goto error;
+
+    for (unsigned i = 0; i < missing; i++) {
+        const char *uri = i < selected_count ? selected[i] :
+                          selected_count ? selected[rand() % selected_count] : fallback;
+        if (!uri || !mpd_run_add(mpd.conn, uri))
+            break;
+        added++;
+    }
+    goto done;
+
+error:
+    fprintf(stderr, "MPD autofill: %s\n", mpd_connection_get_error_message(mpd.conn));
+    if (!mpd_connection_clear_error(mpd.conn))
+        mpd.conn_state = MPD_FAILURE;
+done:
+    free(fallback);
+    free_uris(selected, selected_count);
+    free_uris(queued, queued_count);
+    return added;
+}
 
 char *get_arg1(char *p) {
     return strchr(p, ',') + 1;
@@ -74,10 +270,41 @@ int callback_mpd(struct mg_connection *c) {
         return MG_TRUE;
 
     if (mpd.conn_state != MPD_CONNECTED && cmd_id != MPD_API_SET_MPDHOST &&
-        cmd_id != MPD_API_GET_MPDHOST && cmd_id != MPD_API_SET_MPDPASS)
+        cmd_id != MPD_API_GET_MPDHOST && cmd_id != MPD_API_SET_MPDPASS &&
+        cmd_id != MPD_API_GET_AUTOFILL && cmd_id != MPD_API_SET_AUTOFILL)
         return MG_TRUE;
 
     switch (cmd_id) {
+        case MPD_API_GET_AUTOFILL:
+            n = snprintf(mpd.buf, MAX_SIZE,
+                         "{\"type\":\"autofill\",\"data\":{\"enabled\":%d,\"target\":%u}}",
+                         mpd.autofill_enabled, mpd.autofill_target);
+            break;
+        case MPD_API_SET_AUTOFILL:
+            if (sscanf(c->content, "MPD_API_SET_AUTOFILL,%u,%u", &uint_buf, &uint_buf_2) != 2 ||
+                uint_buf > 1 || uint_buf_2 < 1 || uint_buf_2 > 500) {
+                n = snprintf(mpd.buf, MAX_SIZE,
+                             "{\"type\":\"error\",\"data\":\"Invalid playlist fill target\"}");
+                break;
+            }
+            {
+                int previous_enabled = mpd.autofill_enabled;
+                unsigned previous_target = mpd.autofill_target;
+                mpd.autofill_enabled = uint_buf;
+                mpd.autofill_target = uint_buf_2;
+                if (!mpd_save_settings()) {
+                    mpd.autofill_enabled = previous_enabled;
+                    mpd.autofill_target = previous_target;
+                    n = snprintf(mpd.buf, MAX_SIZE,
+                                 "{\"type\":\"error\",\"data\":\"Could not save playlist fill setting\"}");
+                    break;
+                }
+                mpd.autofill_revision++;
+            }
+            n = snprintf(mpd.buf, MAX_SIZE,
+                         "{\"type\":\"autofill\",\"data\":{\"enabled\":%d,\"target\":%u}}",
+                         mpd.autofill_enabled, mpd.autofill_target);
+            break;
         case MPD_API_AUTHORIZE:
             p_charbuf = strdup(c->content);
             if (strcmp(strtok(p_charbuf, ","), "MPD_API_AUTHORIZE"))
@@ -419,6 +646,15 @@ static int mpd_notify_callback(struct mg_connection *c, enum mg_event ev) {
 }
 
 void mpd_poll(struct mg_server *s) {
+    static unsigned last_fill_version, last_fill_target;
+    static unsigned last_fill_revision;
+    static int last_fill_enabled;
+    static time_t last_fill_attempt;
+    unsigned queue_length = 0;
+
+    if (!mpd.autofill_enabled)
+        last_fill_enabled = 0;
+
     switch (mpd.conn_state) {
         case MPD_DISCONNECTED:
             /* Try to connect */
@@ -473,7 +709,24 @@ void mpd_poll(struct mg_server *s) {
             break;
 
         case MPD_CONNECTED:
-            mpd.buf_size = mpd_put_state(mpd.buf, &mpd.song_id, &mpd.queue_version);
+            mpd.buf_size = mpd_put_state(mpd.buf, &mpd.song_id, &mpd.queue_version,
+                                         &queue_length);
+            if (mpd.conn_state == MPD_CONNECTED && mpd.autofill_enabled &&
+                queue_length < mpd.autofill_target &&
+                (mpd.queue_version != last_fill_version ||
+                 mpd.autofill_target != last_fill_target ||
+                 mpd.autofill_revision != last_fill_revision ||
+                 mpd.autofill_enabled != last_fill_enabled ||
+                 time(NULL) - last_fill_attempt >= 30)) {
+                last_fill_version = mpd.queue_version;
+                last_fill_target = mpd.autofill_target;
+                last_fill_revision = mpd.autofill_revision;
+                last_fill_enabled = mpd.autofill_enabled;
+                last_fill_attempt = time(NULL);
+                if (mpd_fill_playlist(queue_length) > 0 && mpd.conn_state == MPD_CONNECTED)
+                    mpd.buf_size = mpd_put_state(mpd.buf, &mpd.song_id,
+                                                 &mpd.queue_version, &queue_length);
+            }
             for (struct mg_connection *c = mg_next(s, NULL); c != NULL; c = mg_next(s, c)) {
                 c->callback_param = NULL;
                 mpd_notify_callback(c, MG_POLL);
@@ -536,7 +789,8 @@ char *mpd_get_year(struct mpd_song const *song) {
     return str;
 }
 
-int mpd_put_state(char *buffer, int *current_song_id, unsigned *queue_version) {
+int mpd_put_state(char *buffer, int *current_song_id, unsigned *queue_version,
+                  unsigned *queue_length) {
     struct mpd_status *status;
     int len;
 
@@ -552,6 +806,7 @@ int mpd_put_state(char *buffer, int *current_song_id, unsigned *queue_version) {
                    " \"state\":%d, \"volume\":%d, \"repeat\":%d,"
                    " \"single\":%d, \"crossfade\":%d, \"consume\":%d, \"random\":%d, "
                    " \"songpos\": %d, \"elapsedTime\": %d, \"totalTime\":%d, "
+                   " \"bitrate\":%u, "
                    " \"currentsongid\": %d"
                    "}}",
                    mpd_status_get_state(status), mpd_status_get_volume(status),
@@ -559,10 +814,12 @@ int mpd_put_state(char *buffer, int *current_song_id, unsigned *queue_version) {
                    mpd_status_get_crossfade(status), mpd_status_get_consume(status),
                    mpd_status_get_random(status), mpd_status_get_song_pos(status),
                    mpd_status_get_elapsed_time(status), mpd_status_get_total_time(status),
+                   mpd_status_get_kbit_rate(status),
                    mpd_status_get_song_id(status));
 
     *current_song_id = mpd_status_get_song_id(status);
     *queue_version = mpd_status_get_queue_version(status);
+    *queue_length = mpd_status_get_queue_length(status);
     mpd_status_free(status);
     return len;
 }
@@ -629,6 +886,7 @@ int mpd_put_current_song(char *buffer) {
     char *cur = buffer;
     const char *end = buffer + MAX_SIZE;
     struct mpd_song *song;
+    const char *composer;
 
     song = mpd_run_current_song(mpd.conn);
     if (song == NULL)
@@ -642,6 +900,11 @@ int mpd_put_current_song(char *buffer) {
     cur += json_emit_quoted_str(cur, end - cur, mpd_get_artist(song));
     cur += json_emit_raw_str(cur, end - cur, ",\"album\":");
     cur += json_emit_quoted_str(cur, end - cur, mpd_get_album(song));
+    composer = mpd_song_get_tag(song, MPD_TAG_COMPOSER, 0);
+    if (composer != NULL && composer[0] != '\0') {
+        cur += json_emit_raw_str(cur, end - cur, ",\"composer\":");
+        cur += json_emit_quoted_str(cur, end - cur, composer);
+    }
 
     cur += json_emit_raw_str(cur, end - cur, "}}");
     mpd_song_free(song);

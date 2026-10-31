@@ -120,42 +120,46 @@
                 <span class="playing-indicator"></span> NOW PLAYING
                 <span id="bitrate" class="bitrate-badge hide"></span>
               </div>
-              <h1>
-                <span
-                  id="track-icon"
-                  onclick="clickPlay();"
-                  class="glyphicon glyphicon-play"
-                ></span>
-                <span id="currenttrack"></span>
-                <span id="love">
-                  <button
-                    id="btnlove"
-                    type="button"
-                    class="btn btn-default"
-                    onclick="clickLove();"
-                  >
-                    <span class="glyphicon glyphicon-heart"></span></button
-                ></span>
-              </h1>
-              <h4>
-                <span id="artist" class="text"></span>
-                <span id="album" class="text pull-right"></span>
-              </h4>
-              <p id="composer" class="composer-credit hide"></p>
-              <p id="song-file" class="song-file hide"></p>
-              <div class="player-controls" role="group" aria-label="Playback controls">
-                <button type="button" class="btn btn-default" onclick="socket.send('MPD_API_SET_PREV');" aria-label="Previous track" title="Previous track">
-                  <span class="glyphicon glyphicon-backward"></span>
-                </button>
-                <button type="button" class="btn btn-default" onclick="socket.send('MPD_API_SET_STOP');" aria-label="Stop playback" title="Stop playback">
-                  <span id="stop-icon" class="glyphicon glyphicon-stop"></span>
-                </button>
-                <button type="button" class="btn btn-default player-control-primary" onclick="clickPlay();" aria-label="Play or pause" title="Play or pause">
-                  <span id="play-icon" class="glyphicon glyphicon-pause"></span>
-                </button>
-                <button type="button" class="btn btn-default" onclick="socket.send('MPD_API_SET_NEXT');" aria-label="Next track" title="Next track">
-                  <span class="glyphicon glyphicon-forward"></span>
-                </button>
+              <div class="player-main">
+                <div class="player-details">
+                  <h1>
+                    <span
+                      id="track-icon"
+                      onclick="clickPlay();"
+                      class="glyphicon glyphicon-play"
+                    ></span>
+                    <span id="currenttrack"></span>
+                    <span id="love">
+                      <button
+                        id="btnlove"
+                        type="button"
+                        class="btn btn-default"
+                        onclick="clickLove();"
+                      >
+                        <span class="glyphicon glyphicon-heart"></span></button
+                    ></span>
+                  </h1>
+                  <h4>
+                    <span id="artist" class="text"></span>
+                    <span id="album" class="text pull-right"></span>
+                  </h4>
+                  <p id="composer" class="composer-credit hide"></p>
+                  <p id="song-file" class="song-file hide"></p>
+                </div>
+                <div class="player-controls" role="group" aria-label="Playback controls">
+                  <button type="button" class="btn btn-default" onclick="socket.send('MPD_API_SET_PREV');" aria-label="Previous track" title="Previous track">
+                    <span class="glyphicon glyphicon-backward"></span>
+                  </button>
+                  <button type="button" class="btn btn-default" onclick="socket.send('MPD_API_SET_STOP');" aria-label="Stop playback" title="Stop playback">
+                    <span id="stop-icon" class="glyphicon glyphicon-stop"></span>
+                  </button>
+                  <button type="button" class="btn btn-default player-control-primary" onclick="clickPlay();" aria-label="Play or pause" title="Play or pause">
+                    <span id="play-icon" class="glyphicon glyphicon-pause"></span>
+                  </button>
+                  <button type="button" class="btn btn-default" onclick="socket.send('MPD_API_SET_NEXT');" aria-label="Next track" title="Next track">
+                    <span class="glyphicon glyphicon-forward"></span>
+                  </button>
+                </div>
               </div>
               <p id="counter" class="text pull-right">&nbsp;&nbsp;</p>
 

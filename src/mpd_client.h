@@ -45,6 +45,7 @@
     X(MPD_API_GET_AUTOFILL)     \
     X(MPD_API_SET_AUTOFILL)     \
     X(MPD_API_ADD_TRACK)        \
+    X(MPD_API_ADD_AFTER_CURRENT) \
     X(MPD_API_ADD_PLAY_TRACK)   \
     X(MPD_API_ADD_PLAYLIST)     \
     X(MPD_API_PLAY_TRACK)       \

@@ -635,8 +635,10 @@ function webSocketConnect() {
                             $(
                                 '#salamisandwich > tbody > tr.song > td:last-child'
                             ),
-                            'MPD_API_ADD_TRACK',
-                            'play'
+                            current_app === 'search'
+                                ? 'MPD_API_ADD_AFTER_CURRENT'
+                                : 'MPD_API_ADD_TRACK',
+                            current_app === 'search' ? 'plus' : 'play'
                         );
                     } else {
                         $('#salamisandwich > tbody > tr').on({
@@ -650,8 +652,10 @@ function webSocketConnect() {
                                 else if ($(this).is('.song'))
                                     appendClickableIcon(
                                         $(this).children().last(),
-                                        'MPD_API_ADD_PLAY_TRACK',
-                                        'play'
+                                        current_app === 'search'
+                                            ? 'MPD_API_ADD_AFTER_CURRENT'
+                                            : 'MPD_API_ADD_PLAY_TRACK',
+                                        current_app === 'search' ? 'plus' : 'play'
                                     );
                             },
                             mouseleave: function () {
@@ -694,7 +698,9 @@ function webSocketConnect() {
                                     break;
                                 case 'song':
                                     socket.send(
-                                        'MPD_API_ADD_TRACK,' +
+                                        (current_app === 'search'
+                                            ? 'MPD_API_ADD_AFTER_CURRENT,'
+                                            : 'MPD_API_ADD_TRACK,') +
                                             decodeURIComponent(
                                                 $(this).attr('uri')
                                             )

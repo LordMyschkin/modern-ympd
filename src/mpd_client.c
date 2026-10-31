@@ -438,6 +438,30 @@ int callback_mpd(struct mg_connection *c) {
         out_add_track:
             free(p_charbuf);
             break;
+        case MPD_API_ADD_AFTER_CURRENT:
+            p_charbuf = strdup(c->content);
+            if (strcmp(strtok(p_charbuf, ","), "MPD_API_ADD_AFTER_CURRENT"))
+                goto out_add_after_current;
+
+            if ((token = strtok(NULL, ",")) == NULL)
+                goto out_add_after_current;
+
+            free(p_charbuf);
+            p_charbuf = strdup(c->content);
+            {
+                struct mpd_status *status = mpd_run_status(mpd.conn);
+                if (status != NULL) {
+                    int song_pos = mpd_status_get_song_pos(status);
+                    mpd_status_free(status);
+                    if (song_pos >= 0)
+                        mpd_run_add_id_to(mpd.conn, get_arg1(p_charbuf), song_pos + 1);
+                    else
+                        mpd_run_add_id(mpd.conn, get_arg1(p_charbuf));
+                }
+            }
+        out_add_after_current:
+            free(p_charbuf);
+            break;
         case MPD_API_ADD_PLAY_TRACK:
             p_charbuf = strdup(c->content);
             if (strcmp(strtok(p_charbuf, ","), "MPD_API_ADD_PLAY_TRACK"))

@@ -355,6 +355,46 @@ a:focus {
   font-weight: 600;
 }
 
+.song-file {
+  margin: -9px 0 16px 56px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.player-controls {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 12px 0 18px;
+}
+
+.player-controls > .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 44px;
+  padding: 0;
+  font-size: 16px;
+}
+
+.player-controls > .player-control-primary {
+  width: 56px;
+  height: 48px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-size: 19px;
+}
+
+.player-controls > .player-control-primary:hover,
+.player-controls > .player-control-primary:focus {
+  background: #d4ffa5;
+  border-color: #d4ffa5;
+  color: var(--accent-ink);
+}
+
 #album {
   float: none !important;
   color: var(--muted);
@@ -676,6 +716,18 @@ a:focus {
   text-align: center;
 }
 
+.file-path-setting {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 500;
+}
+
+.file-path-setting input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .notifications {
   position: fixed;
   z-index: 9999;
@@ -826,7 +878,8 @@ a:focus {
     margin-left: 0;
   }
 
-  .composer-credit {
+  .composer-credit,
+  .song-file {
     margin-left: 0;
   }
 

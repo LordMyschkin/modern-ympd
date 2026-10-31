@@ -905,6 +905,8 @@ int mpd_put_current_song(char *buffer) {
         cur += json_emit_raw_str(cur, end - cur, ",\"composer\":");
         cur += json_emit_quoted_str(cur, end - cur, composer);
     }
+    cur += json_emit_raw_str(cur, end - cur, ",\"file\":");
+    cur += json_emit_quoted_str(cur, end - cur, mpd_song_get_uri(song));
 
     cur += json_emit_raw_str(cur, end - cur, "}}");
     mpd_song_free(song);

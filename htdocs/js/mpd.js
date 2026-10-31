@@ -26,6 +26,7 @@ var pagination = 0;
 var browsepath = '';
 var lastSongTitle = '';
 var current_song = new Object();
+var current_song_file = '';
 var MAX_ELEMENTS_PER_PAGE = 512;
 var isTouch = Modernizr.touch ? 1 : 0;
 var filter = '';
@@ -893,6 +894,8 @@ function webSocketConnect() {
                     $('#album').text('');
                     $('#artist').text('');
                     $('#composer').text('').addClass('hide');
+                    current_song_file = obj.data.file || '';
+                    updateSongFile();
 
                     $('#btnlove').removeClass('active');
 
@@ -1055,6 +1058,16 @@ var updatePlayIcon = function (state) {
         document.getElementById('player').pause();
     }
 };
+
+function updateSongFile() {
+    if ($.cookie('showSongFile') === 'true' && current_song_file) {
+        $('#song-file')
+            .text('File: ' + current_song_file)
+            .removeClass('hide');
+    } else {
+        $('#song-file').text('').addClass('hide');
+    }
+}
 
 var updatePageTitle = function (songInfo) {
     if (!songInfo || (!songInfo.artist && !songInfo.title)) {
@@ -1242,6 +1255,7 @@ $('#btnautoplay').on('click', function (e) {
 function getHost() {
     socket.send('MPD_API_GET_MPDHOST');
     socket.send('MPD_API_GET_AUTOFILL');
+    $('#show-song-file').prop('checked', $.cookie('showSongFile') === 'true');
 
     function onEnter(event) {
         if (event.which == 13) {
@@ -1331,6 +1345,10 @@ function confirmSettings() {
     socket.send(
         'MPD_API_SET_MPDHOST,' + $('#mpdport').val() + ',' + $('#mpdhost').val()
     );
+    $.cookie('showSongFile', $('#show-song-file').prop('checked'), {
+        expires: 424242,
+    });
+    updateSongFile();
     $.cookie('mpdstream', $('#mpdstream').val(), { expires: 424242 });
     $('#settings').modal('hide');
 }
